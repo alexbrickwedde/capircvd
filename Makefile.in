@@ -1,0 +1,53 @@
+CXX = @CXX@
+FLAGS=-DVERSION=\"${VERSION}\" @CFLAGS@ $(PATHS) @DEFS@ 
+LIBS=@LIBS@
+LDFLAGS=-L. @LDFLAGS@
+VERSION=0.2.42
+LN_S=@LN_S@
+TAR=@tarprog@
+INSTALL=@INSTALL@
+
+prefix = @prefix@
+exec_prefix = @exec_prefix@
+
+bindir = @bindir@
+sbindir = @sbindir@
+libexecdir = @libexecdir@
+datadir = @datadir@
+sysconfdir = @sysconfdir@
+sharedstatedir = @sharedstatedir@
+localstatedir = @localstatedir@
+libdir = @libdir@
+infodir = @infodir@
+mandir = @mandir@
+includedir = @includedir@
+
+capircvd : capiapp.o capircvd.o cconn.o ccconf.o tools.o isdn2wav ; ${CXX} -g cconn.o capiapp.o capircvd.o ccconf.o tools.o -o capircvd ${LIBS} ${FLAGS}
+
+capiapp.o : capiapp.cpp capiapp.h ; ${CXX} -c capiapp.cpp -g -o capiapp.o ${FLAGS}
+
+capircvd.o : capircvd.cpp ; ${CXX} -c capircvd.cpp -g -o capircvd.o ${FLAGS}
+
+cconn.o : cconn.cpp cconn.h ; ${CXX} -c cconn.cpp -g -o cconn.o ${FLAGS}
+
+ccconf.o : ccconf.cpp ccconf.h ; ${CXX} -c ccconf.cpp -g -o ccconf.o ${FLAGS}
+
+tools.o : tools.h tools.cpp ; ${CXX} -c tools.cpp -g -o tools.o ${FLAGS}
+
+isdn2wav : isdn2wav.cpp ; ${CXX} isdn2wav.cpp -o isdn2wav
+
+clean : ; rm -f *.o capircvd isdn2wav config.cache config.status capircvd.handler
+
+install : capircvd ; ./install.sh
+
+#
+# Following entries are for the author...
+#
+
+tgz : ; $(LN_S) . capircvd-${VERSION} ; ${TAR} -czf ../capircvd-${VERSION}.tar.gz capircvd-${VERSION}/*.h capircvd-${VERSION}/*.cpp capircvd-${VERSION}/configure capircvd-${VERSION}/daten/Namen_* capircvd-${VERSION}/daten/ping_* capircvd-${VERSION}/capircvd.conf capircvd-${VERSION}/*.in capircvd-${VERSION}/README capircvd-${VERSION}/CHANGES capircvd-${VERSION}/LICENSE; rm -f capircvd-${VERSION}
+
+www : tgz ; scp ../capircvd-${VERSION}.tar.gz capircvd.brickwedde.de:/home/alex/capircvd.de/download
+
+test : capircvd ; ./capircvd -D 0 -L -
+
+myinst : capircvd ; for i in 0 1 2 3 4 5 6 7 8 9 10 ; do killall -TERM capircvd;sleep 1; done ; ./install.sh ; killall -HUP init

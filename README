@@ -1,0 +1,156 @@
+
+                         capircvd 
+                       Version 0.2.x
+
+
+ (please excuse my bad english...)
+ Author  : Alexander Brickwedde
+ Contact : alex@brickwedde.de
+           for real address see nic-hdl: AB1176-RIPE
+
+ What is capircvd? |
+   ----------------+
+
+   "capircvd" is a program for the receipt of ISDN calls by CAPI under
+   Linux.  The following calls can be received:
+ 
+    * voice (transparent data)
+    * faxes of the group 3
+ 
+   Further it can:
+ 
+    * activate call deflection for an incoming call
+ 
+   I was inspired to write this program by "capifaxrcvd" from the
+   isdn4linux-utils and the Patch of Dirk Lutzebaeck.  At my employer
+   (http://www.telehaus.net) I used this program, slightly patched by me, 
+   at a so called "anlagenanschluss"(P2P) with direct-inward dialing.
+   That program was very unreliable (because of my Patch :-),
+   because of that i decided to write capircvd...
+
+   This program is still in BETA-state, use it at your own risk!
+   Feel free to send me bug-reports and improvements !!!
+ --  Everything you do with this program is at your own risk! --
+
+    ...
+
+     Some of the debug-output of capircvd is still in german,
+     i will change it while working on the program...
+
+ 
+ Where can i get "capircvd"? |
+   --------------------------+
+
+  http://www.capircvd.de , follow the download-link
+
+
+ Prerequisites for "capircvd"? |
+   ----------------------------+
+
+    "capircvd" is written in C++.  Thus a C++ compiler is needed,
+    e.g. egcs. 
+
+    The program needs pthreads, thus an appropriate library!
+
+    "capircvd" is using the libcapi20 contained in the isdn4k-utils
+     (see http://www.isdn4linux.de ->FAQ ->CVS(!) ) which currently only
+     supports the active AVM B1 and the passive AVM Fritzcard.
+     Thus an ISDN card produced by AVM is needed.
+
+    Note for SuSE 6.4 users:
+      In der Library müssen die Funktionen von capiutils.h enthalten sein,
+      das ist bei SuSE 6.4 nicht der Fall! Einfach neue libcapi20 kompilieren
+      und in /usr/lib reinbasteln, mehr Hilfe per Mail alex@brickwedde.de
+     Tip: Neueste isdn4k-utils per CVS ziehen, siehe i4l-FAQ...
+     Hinweis: Nicht nur die neuesten isdn4k-utils ziehen sondern auch
+      die isdn-Treiber für den Kernel (damit alles kompatibel bleibt!)
+     Tip: Wenn die capi20 nicht compilieren will: "libtool" installieren!
+     Wenns Probleme mit statisch und dynamisch gibt: In der Datei
+      ltconfig in Zeile 1856 steht " gnu*) " welches ich auf " gnu*|linux) "
+      erweitert habe! Dann konnte er ordentlich kompilieren...
+
+    And then naturally Linux...  Ports are planned in the far future! 
+
+    Note for users of previous versions:
+     Die Versendeskripte "sendfax" und "sendvoice" sind nicht mehr im Paket,
+     dafür ein universelles handler-Skript "capircvd.handler". Dafür sind
+     noch Tools wie sff2misc, zip, gs, sendmail (oder wrapper) usw. notwendig.
+     Seit Version 0.2.20 braucht der handler auch mimencode, nicht mehr
+     uuencode!
+
+    The handler for sending fax/voice-files needs several tools, like
+     gs (ghostscript), sff2misc (www.isdn4linux.de ->FAQ -> fax4i4l-FAQ),
+     mimencode, sendmail, zip and maybe some more :-)  
+     (mimencode is part of the package "metamail" (SuSE 6.4 contains it))
+
+
+    (the alaw-files are in ISDN aLaw format with 8000 Hz
+    samplingrate!)  Starting from version 0.2.4 a Tool isdn2wav
+    is included, it converts the ISDN aLaw files into a 16bit mono signed
+    PCM with 8000 Hz rate with appropriate header!
+    These files are playable with the Windows Mediaplayer and others...
+
+
+ How to install "capircvd"? |
+   -------------------------+
+
+    Unpack the tgz (tar -xzf capirvd-0.2.x.tar.gz should work),
+    change to the directory capircvd-0.2.x and do a 
+    "./configure -- with-iprefix=49 -- with-nprefix=5459", please use
+    your settings for the inter-/national prefixes.
+    then "make" call to compile ...
+
+    "make install" copies capircvd into the sbin directory and the other
+    programs in the bin directory.  If the necessary (default) directories
+    (/var/spool/capircvd and /etc/capircvd) do not exist, they are created.
+    If there is no configuration file capircvd.conf in /etc/capircvd
+    it will be copied ...
+
+    call "capircvd" with the switch -? and consult the help.
+
+    The configuration files must be adapted and then you can start 
+    "capircvd" with appropriate parameters.
+
+    if capircvd receives a USR1/TERM signal (e.g.: killall -USR1 capircvd)
+    the current configuration will be stored in the configuration directory
+    into the file "capircvd.state"! Starting with parameter "-r" reads
+    this file in, if she exists, otherwise capircvd.conf.  
+    When using the telnet-interface to change parameters these changes
+    are not stored in capircvd.conf but in capircvd.state !!!
+    Sending a HUP signal makes capircvd reread the file "capircvd.conf"!
+    (not capircvd.state, even when using "-r" !!!)
+
+    When you want to run capircvd everytime, and restart it in case
+    of failure use init. i added this line to my /etc/inittab:
+
+crcv:2:respawn:/usr/sbin/capircvd -D 0 &> /dev/null
+
+    this will run capircvd when in runlevel 2! Please change your
+    cmdline-options! Killing capircvd with "killall -TERM capircvd"
+    starts a new capircvd! When you install new versions of capircvd
+    you must deactivate this, otherwise you get "text file busy"
+    when you want to overwrite the binary! (Quick and Dirty:
+    Using killall ten times will deactivate capircvd for 5 minutes,
+    after installing use "killall -HUP init" to restart capircvd!)
+
+ What are the "Namen_*.alaw" files in the data catalog? |
+   -----------------------------------------------------+
+
+    These files contain audio data in the aLaw format, as soon as a call
+    arrives the file for the Callingpartynumber is played, i.e..  one
+    can hear who calls :-) . When the CallingPartyNumber is not found
+    it will be shortened until a file is found, then you still
+    can hear from which area (country,city,...) a call is coming...
+    (see commandline-parameter "-a" ...)
+
+ What license applies to "capircvd"? |
+   ----------------------------------+
+
+    capircvd is underlying the GPL! Do you need another license? Contact me,
+    i'm flexible...
+
+
+:wq!       :-)
+
+
+

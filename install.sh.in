@@ -1,0 +1,15 @@
+prefix=@prefix@
+exec_prefix=@exec_prefix@
+bindir=@bindir@
+sbindir=@sbindir@
+
+cp capircvd @sbindir@
+cp isdn2wav capircvd.handler @bindir@
+
+test -d /etc/capircvd || mkdir /etc/capircvd
+test -e /etc/capircvd/capircvd.conf || cp capircvd.conf /etc/capircvd/capircvd.conf
+
+test -d /var/spool/capircvd || mkdir /var/spool/capircvd
+
+cp daten/* /var/spool/capircvd
+

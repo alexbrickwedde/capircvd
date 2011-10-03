@@ -1,0 +1,220 @@
+#!/bin/bash
+
+format=$1
+called=$2
+calling=$3
+file=$4
+an=$5
+remote=$6
+mailformat=$7
+
+sender=@SENDER@
+cookie=`date +"%s"`
+
+case "$format" in
+fax)
+
+ case "$mailformat" in
+ inline_jpeg)
+  if test -s $file ; then
+   basefile=`echo $file | sed -e "s/\.sff//"`
+   @sff2misc@ -j $file $basefile
+   (
+   echo "Message-ID: <$cookie@capircvd>"
+   echo "MIME-Version: 1.0"
+   echo "To: <$an>"
+   echo "Subject: Eingegangenes Fax"
+   echo "Content-Type: multipart/related;"
+   echo " boundary=\"------------0BF2862702317AE7CC125707\""
+   echo ""
+   echo ""
+   echo "--------------0BF2862702317AE7CC125707"
+   echo "Content-Type: text/html; charset=us-ascii"
+   echo "Content-Transfer-Encoding: 7bit"
+   echo ""
+   echo "<!doctype html public \"-//w3c//dtd html 4.0 transitional//en\">"
+   echo "<html><body bgcolor=\"#dddddd\">"
+   echo "Eingegangenes Fax von Rufnummer $calling (RemoteID:\"$remote\") an $called:<br>"
+   echo "<p align=right><b>fax received by <a href=http://www.capircvd.de>capircvd</a></b></p><center>"
+   nr=0
+   for i in `ls $basefile.???.jpg` ; do
+    nr=`echo $nr + 1 | @bc@`
+    echo "<hr>Seite $nr:<hr><img SRC=\"cid:part$nr.$cookie@capircvd\" width=\"97%\"><br>"
+   done
+   echo "</center><br>&nbsp;</body></html>"
+   nr=0
+   for i in `ls $basefile.???.jpg` ; do
+    nr=`echo $nr + 1 | @bc@`
+    echo ""
+    echo "--------------0BF2862702317AE7CC125707"
+    echo "Content-Type: image/jpeg"
+    echo "Content-ID: <part$nr.$cookie@capircvd>"
+    echo "Content-Transfer-Encoding: base64"
+    echo "Content-Disposition: inline; filename=\"$i\""
+    echo ""
+    @mimencode@ $i
+   done
+   echo "--------------0BF2862702317AE7CC125707--"
+   ) | @sendmail@ -f $sender $an
+   rm $basefile.???.jpg
+  else
+   echo -e "To: $an\nSubject: Eingegangenes Fax!\n\nEingegangener Anruf von Rufnummer $calling an $called .\nAnrufer war kein Faxgeraet !!!\n\n" | @sendmail@ -f $sender $an
+  fi
+
+  ;;
+
+ attached_jpeg)
+
+  if test -s $file ; then
+   basefile=`echo $file | sed -e "s/\.sff//"`
+   @sff2misc@ -j $file $basefile
+   (
+   echo "Message-ID: <$cookie@capircvd>"
+   echo "MIME-Version: 1.0"
+   echo "To: <$an>"
+   echo "Subject: Eingegangenes Fax"
+   echo "Content-Type: multipart/mixed;"
+   echo " boundary=\"------------0BF2862702317AE7CC125707\""
+   echo ""
+   echo ""
+   echo "--------------0BF2862702317AE7CC125707"
+   echo "Content-Type: text/plain"
+   echo ""
+   echo "Eingegangenes Fax von Rufnummer $calling (RemoteID:\"$remote\") an $called:"
+   echo "fax received by http://www.capircvd.de"
+   for i in `ls $basefile.???.jpg` ; do
+    nr=`echo $nr + 1 | @bc@`
+    echo ""
+    echo "--------------0BF2862702317AE7CC125707"
+    echo "Content-Type: image/jpeg"
+    echo "Content-Transfer-Encoding: base64"
+    echo "Content-Disposition: attachment; filename=\"$i\""
+    echo ""
+    @mimencode@ $i
+   done
+   echo "--------------0BF2862702317AE7CC125707--"
+   ) | @sendmail@ -f $sender $an
+   rm $basefile.???.jpg
+  else
+   echo -e "To: $an\nSubject: Eingegangenes Fax!\n\nEingegangener Anruf von Rufnummer $calling an $called .\nAnrufer war kein Faxgeraet
+!!!\n\n" | @sendmail@ -f $sender $an
+  fi
+
+  ;;
+
+ attached_pdf_zip|*)
+
+  if test -s $file ; then
+
+   basefile=`echo $file | sed -e "s/\.sff//"`
+   pdffile=$basefile.pdf
+   zipfile=$basefile.zip
+
+   @sff2misc@ -p $file $basefile
+   @gs@ -q -dNOPAUSE -dBATCH -sDEVICE=pdfwrite -sOutputFile=- $basefile.ps > $pdffile
+   @zip@ -j $zipfile $pdffile
+
+   (
+   echo "Message-ID: <$cookie@capircvd>"
+   echo "MIME-Version: 1.0"
+   echo "To: <$an>"
+   echo "Subject: Eingegangenes Fax"
+   echo "Content-Type: multipart/mixed;"
+   echo " boundary=\"------------0BF2862702317AE7CC125707\""
+   echo ""
+   echo "This is a multi-part message in MIME format."
+   echo "--------------0BF2862702317AE7CC125707"
+   echo "Content-Type: text/html; charset=us-ascii"
+   echo "Content-Transfer-Encoding: 7bit"
+   echo ""
+   echo "<!doctype html public \"-//w3c//dtd html 4.0 transitional//en\">"
+   echo "<html>"
+   echo "<center>Eingegangenes Fax von Rufnummer $calling (RemoteID:\"$remote\") an $called:</center>"
+   echo "<p align=right><b>fax received by <a href=http://www.capircvd.de>capircvd</a></b></p></html>"
+   echo ""
+   echo "--------------0BF2862702317AE7CC125707"
+   echo "Content-Type: application/x-zip-compressed;"
+   echo " name=\"faxdocument.zip\""
+#   echo "Content-ID: <part1.$cookie@capircvd>"
+   echo "Content-Transfer-Encoding: base64"
+   echo "Content-Disposition: inline;"
+   echo " filename=\"faxdocument.zip\""
+   echo ""
+   @mimencode@ $zipfile
+   echo "--------------0BF2862702317AE7CC125707--"
+   ) | @sendmail@ -f $sender $an
+
+#   (
+#   echo -e "To: $an\nSubject: Eingegangenes Fax!\n\nEingegangenes Fax von Rufnummer $calling (RemoteID:\"$remote\") an $called \n\n"
+#   /usr/bin/uuencode $zipfile faxfile.zip
+#   ) | @sendmail@ -f $sender $an
+
+   rm $zipfile $pdffile $basefile.ps
+
+  else
+
+   echo -e "To: $an\nSubject: Eingegangenes Fax!\n\nEingegangener Anruf von Rufnummer $calling an $called .\nAnrufer war kein Faxgeraet !!!\n\n" | @sendmail@ -f $sender $an
+  fi
+  ;;
+ esac
+;;		 # fax
+
+voice)
+ if test -e $file ; then
+  basefile=`echo $file|sed -e "s/\.alaw//"`
+  wavfile=$basefile.wav
+  zipfile=$basefile.zip
+  isdn2wav $file $wavfile
+  @zip@ -j $zipfile $wavfile
+   (
+   echo "Message-ID: <$cookie@capircvd>"
+   echo "MIME-Version: 1.0"
+   echo "To: <$an>"
+   echo "Subject: Eingegangener Anruf"
+   echo "Content-Type: multipart/mixed;"
+   echo " boundary=\"------------0BF2862702317AE7CC125707\""
+   echo ""
+   echo "This is a multi-part message in MIME format."
+   echo "--------------0BF2862702317AE7CC125707"
+   echo "Content-Type: text/html; charset=us-ascii"
+   echo "Content-Transfer-Encoding: 7bit"
+   echo ""
+   echo "<!doctype html public \"-//w3c//dtd html 4.0 transitional//en\">"
+   echo "<html>"
+   echo "<center>Eingegangener Anruf von Rufnummer $calling auf $called ...</center>"
+   echo "<p align=right><b>voicefile received by <a href=http://www.capircvd.de>capircvd</a></b></p></html>"
+   echo ""
+   echo "--------------0BF2862702317AE7CC125707"
+   echo "Content-Type: application/x-zip-compressed;"
+   echo " name=\"voicedocument.zip\""
+#   echo "Content-ID: <part1.$cookie@capircvd>"
+   echo "Content-Transfer-Encoding: base64"
+   echo "Content-Disposition: inline;"
+   echo " filename=\"voicedocument.zip\""
+   echo ""
+   @mimencode@ $zipfile
+   echo "--------------0BF2862702317AE7CC125707--"
+   ) | @sendmail@ -f $sender $an
+
+#  ( echo -e "To: $an\nSubject: Eingegangener Anruf!\n\nEingegangener Anruf von Rufnummer $calling auf $called ...\n\n" ; /usr/bin/uuencode $zipfile voicefile.zip) | @sendmail@ -f $sender $an
+
+  rm $wavfile $zipfile
+ else
+
+  echo -e "To: $an\nSubject: Eingegangener Anruf!\n\nEingegangener Anruf von Rufnummer $calling auf $called, keine Aufnahme ! ...\n\n" | @sendmail@ -f $sender $an
+
+ fi
+;;		# voice 
+
+exec)
+ echo -e "To: $an\nSubject: Eingehender Anruf!\n\nEingehender Anruf von Rufnummer $calling auf $called ! ...\n\n" | @sendmail@ -f $sender $an
+ # echo "Call from $calling to $called" | smbclient -M $an
+ ;;		# exec
+
+*)
+
+ echo "Unknown call to capircvd.handler, see README and capircvd sourcecode!"
+
+esac
+
+

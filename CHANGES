@@ -1,0 +1,241 @@
+0.2.39
+ No real changes
+
+0.2.38/37
+ Fixed bug, see configfile "onerror"
+
+0.2.36
+ BUG:
+  Ping-Connection terminates after announcement (wrong configuration)
+
+0.2.35
+
+ ???
+
+
+0.2.34
+
+ New option for "mode voice": "record"
+ With "record" you can control the start
+ of recoding. "off" means that record won't
+ start and the call will be dropped after the
+ announcement. "later" means that recording starts
+ after the announcement. If it isn't defined
+ recording will start immediatly after connect.
+ (only tested a few times!)
+
+0.2.33
+
+ Error in Default-capircvd.conf: Example for fax-filename has ":"
+ New option "faxid" with "mode fax" is setting the local identification
+ New section "global" with options "iprefix" and "nprefix" for setting
+ the prefixes, commandlineoptions to "configure" become invalid !!!
+
+0.2.32
+ 
+ New Mailformat "attached_jpeg" brings you each page as an attached
+ jpeg-image (not inline!)
+
+ Now capircvd is sending the fax-identification with a "+" as prefix,
+ spaces between countrycode and citycode are still missing, but that
+ should be no problem...
+
+0.2.31
+ BUG: First use of "dontuse" stopped initializing further controller.
+ (If you don't use the second controller, the third/fourth and so on
+ will be disabled too.)
+ BUG: 2. parameter of capi20_register was too big, capi has a maximum of 7
+ Got capircvd running with a C4 without modifications. Further tests
+ will take place...
+
+0.2.30
+
+ BUG: The "exec"-Handler has called- and callingpartynumber 
+ mixed up. Now its correct...
+
+0.2.29
+
+ You can turn off the use of a Controller with "dontuse",
+ see capircvd.conf
+
+0.2.28
+
+ Some small changes concerning a specific error 
+
+0.2.27
+
+ A memory-leak was fixed! Before this every call eats up 16k.
+
+ The telnet-interface is getting useful:
+  You can create new sections and delete options
+  and sections, see command 'help'
+
+0.2.26
+
+ Users of Voice-Numbers can change their announcement:
+  While the box is talking enter a pin (which is defined
+  in the section of the number! See capircvd.conf...)
+  followed by a '#', enter '11#' to start the recording,
+  press '#' or end the call to stop recording.
+  After recording has been stop you can hear your new
+  annoncement with the commandsequence '12#'...
+ 
+0.2.25
+
+ "mode ping" is new! Don't use it on "real" Systems, or only for selected
+ callers, because it will stop all other activities while
+ the ping is running! It uses /usr/sbin/fping !!!
+ If fping is not there it will say: host is not up!
+
+0.2.24
+
+ HUP-Signal makes capircvd reread capircvd.conf (not capircvd.state,
+ even when using cmdline-parameter "-r"!)
+ capircvd.state is dumped when USR1 is received.
+
+ New option "debug" in section "admin"
+
+0.2.23
+
+ The message-id (capircvd.handler) was 1@capircvd now it is
+ [seconds since 1970]@capircvd. now each message is
+ "individual". (not a serious bug!)
+
+0.2.22
+
+ Language has changed! I'm trying to do everything in english...
+ Please excuse my bad school-english.
+
+
+0.2.21
+
+ So, jetzt ist auch ein kleiner Telnet-Server integriert!
+ Die Konfiguration kann online geändert werden, die Befehle
+ kann man sich per "help" ansehen. Der Aufbau ist ähnlich
+ der Konfigurationsdatei
+ Noch ist das ganze nur zum ausprobieren! Die Nutzerrechte
+ werden evtl. noch nicht 100% gecheckt! (Ich glaube wohl :-)
+ in der capircvd.conf kommt eine option dazu: "user"
+ Mit dieser Option kann innerhal jeder Sektion ein(!) User 
+ festgelegt werden, der diese bearbeiten darf.
+ Eine neue Sektion kam hinzu "=passwd". Darin stehen "Username"/
+ "Passwort" Kombinationen: z.B. "alex   test"
+
+0.2.20
+ 
+ Habe den capircvd.handler erweitert. Ab sofort werden Mails mit
+ Anhang im MIME-Format verschickt, nicht mehr uuencoded
+ Für Faxe kann man als Mailformat "inline_jpeg" wählen,
+ dann kommen Mails mit inline-jpeg-Grafiken (welch wunder)
+ raus...
+  Wer weitere Formate wünscht kann sich bei mir melden...
+ PS: Das Mailformat ist je Rufnummer konfigurierbar!
+
+ configure kann man parameter --with-sender=username einen
+ Absender angeben, dieser wird von capircvd.handler verwendet...
+
+0.2.19
+
+ Unwichtige Änderungen...
+
+0.2.18
+
+ Debugging fertiggestellt. Der Debuglevel ist eine 
+ Bitmaske welche die Art der Nachrichten festlegt.
+ Die 0 wird in 65535 gewandelt, wer keine Meldungen
+ will muss -D weglassen :-)
+
+0.2.17
+
+ Wichtige Änderungen bei der Faxempfängerklasse.
+ Nicht initialisierte Variable verursacht Besetzt!!!
+
+0.2.16
+
+ Dateinamen können per Konfigdatei angepasst werden.
+ capircvd speichert beim beenden die Datei "capircvd.state"
+ darin sind u.a. laufende Nummern gesichert, beim nächsten
+ Programmstart kann dann per Schalter "-r" diese Konfiguration
+ verwendet werden. 
+ Zukunft: Wird per Telefon eine neue Ansage aufgesprochen
+  wird die Änderung nur in der "capircvd.state" aktiv!
+
+ Debugging mit -D 65535 !!!
+
+0.2.15
+
+ Diverse interne Änderungen
+ Debugging mit -D 65535 !!!
+
+0.2.14 
+
+KONFIGURATIONSDATEI ANPASSEN !!!
+Kleinere Aenderung gegen 0.2.13 (u.a. Bug bei DDI)
+
+0.2.13
+
+!!! Wichtig ! Format der Konfigurationsdatei wurde geändert !!!
+Die Handler habe ich in ein Shell-Skript zusammengefasst,
+capircvd.handler unterscheidet nach $1 ob
+fax, voice oder exec vorliegt und arbeitet entsprechend!
+
+z.Z. ist diese Version 0.2.13 noch nicht einstzbereit!
+Version 0.2.14 wird wieder voll funktionsfähig sein!
+
+0.2.12
+
+sendfax und sendvoice benutzen nicht mehr Substitution der Bash sondern
+sed, RedHat 6.2 enthält uralt-Bash?
+sendfax und sendvoice habe ich umbenannt in sendfaxfile und sendvoicefile
+call heisst jetzt incomingcall
+
+0.2.11
+
+-c gibt jetzt das Konfigurationsverzeichnis an, 
+ Parameter -f gibt es nicht mehr !
+ Konfigurationsdatei heisst jetzt immer "capircvd.conf" in diesem Verz.
+ Die Dateien für Konfigurationsueberladung (je nach CalingPartyNumber)
+ sind ab jetzt auch in diesem Verzeichnis!
+
+0.2.10
+
+-b startet capircvd als Daemon im Hintergrund...
+
+0.2.9
+
+Logdatei wird von capircvd selber erstellt,
+Änderungen wg. capiutils.h und libcapi20 in der SuSE 6.4 beachten (README)!
+
+0.2.8
+
+"createconf" zum erstellen von einfachen Konfigdateien!
+Neuer Dienst "exec" fuehrt ein Programm aus:
+  Neu dabei: "call" zum einfachen Rufmelden ...
+
+0.2.7
+
+Diverse umstaendliche Programmierungen im Bezug auf strings
+ und c-Zeichenketten behoben...
+
+0.2.6
+
+"make install"
+
+0.2.5
+
+"configure"-Skript erstellt, Kommandozeilenhilfe und Hinweis auf "-a" in der README
+
+0.2.4
+
+Konverter fuer ISDN-aLaw nach PCM geschrieben...
+
+0.2.3
+
+Fehler bei der Faxannahme, ein Datenpaket wird gesendet: behoben!
+sendfax-Skript verbessert: PDF-Dateien werden erstellt.
+Outputdatei wurde nicht geschlossen.
+ 
+0.2.2
+
+Erste funktionsfaehige Version
+

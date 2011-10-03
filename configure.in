@@ -1,0 +1,79 @@
+AC_INIT(capircvd.cpp)
+
+AC_PREFIX_DEFAULT(/usr)
+
+SENDER="fax"
+AC_ARG_WITH(sender,[--with-sender=fax     Username mit dem capircvd.handler Mails sendet],
+	[SENDER=$withval])
+
+dnl Checks for programs.
+AC_PROG_CPP
+AC_PROG_LN_S
+AC_PROG_CXX
+
+AC_PATH_PROG(bc,bc)
+if test "x$bc" = "x" ; then
+ AC_MSG_ERROR(["bc" ist nicht installiert, bitte installieren...])
+fi
+
+AC_PATH_PROG(tarprog,tar)
+if test "x$tarprog" = "x" ; then
+ AC_MSG_ERROR(["tar" ist nicht installiert, bitte installieren...])
+fi
+
+AC_PATH_PROG(mimencode,mimencode)
+if test "x$mimencode" = "x" ; then
+ AC_MSG_ERROR(["mimencode" ist nicht installiert, bitte installieren...])
+fi
+
+AC_PATH_PROG(sff2misc,sff2misc)
+if test "x$sff2misc" = "x" ; then
+ AC_MSG_ERROR(["sff2misc" ist nicht installiert, bitte installieren...])
+fi
+ 
+AC_PATH_PROG(gs,gs)
+if test "x$gs" = "x" ; then
+ AC_MSG_ERROR(["gs" (ghostscript) ist nicht installiert, bitte installieren...])
+fi
+
+AC_PATH_PROG(zip,zip)
+if test "x$zip" = "x" ; then
+ AC_MSG_ERROR(["zip" ist nicht installiert, bitte installieren...])
+fi
+
+AC_PATH_PROG(sendmail,sendmail)
+if test "x$sendmail" = "x" ; then
+ AC_MSG_ERROR(["sendmail" ist nicht installiert, bitte installieren...])
+fi
+
+dnl Checks for libraries.
+
+AC_CHECK_LIB(capi20, capi20_release)
+dnl AC_CHECK_LIB(capi20, capi_cmsg_header)
+AC_CHECK_LIB(pthread, pthread_create)
+
+dnl Checks for header files.
+
+AC_CHECK_HEADERS(linux/capi.h,,
+        AC_MSG_ERROR("Missing $ac_hdr. Kernel source installed?"))
+AC_CHECK_HEADERS(capi20.h,,
+        AC_MSG_ERROR("Missing $ac_hdr. CAPI installed? capiutils.h missing? Copy my capiutils.h to /usr/include "))
+AC_CHECK_HEADERS(capiutils.h,,
+        AC_MSG_ERROR("Missing $ac_hdr. Use capi20 from isdn4k-utils..."))
+AC_HEADER_STDC
+AC_C_CONST
+
+dnl Checks for typedefs, structures, and compiler characteristics.
+
+dnl Checks for library functions.
+
+echo -e "\n"
+
+AC_SUBST(SENDER)
+echo "Using \"$SENDER\" as the user to send mails from..."
+
+echo -e "\n"
+
+AC_OUTPUT(Makefile capircvd.handler install.sh)
+
+chmod guo+x capircvd.handler install.sh
