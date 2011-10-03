@@ -1,0 +1,950 @@
+#! /usr/bin/perl -w
+#
+#  Copyright (C) 2000
+#  Arne Hueggenberg, <hueggenberg@id-pro.de>
+#  Markus Wuebben,   <wuebben@id-pro.de>
+#  ID-PRO AG,        <info@id-pro.de>
+#
+#
+#  faxrcvd is free software; you can redistribute it and/or modify
+#  it under the terms of the GNU General Public License as published by
+#  the Free Software Foundation; either version 2, or (at your option)
+#  any later version.
+#
+#  faxrcvd is distributed in the hope that it will be useful,
+#  but WITHOUT ANY WARRANTY; without even the implied warranty of
+#  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+#  GNU General Public License for more details.
+#
+#  You should have received a copy of the GNU General Public License
+#  along with faxrcvd; see the file COPYING.  If not, write to
+#  the Free Software Foundation, 675 Mass Ave, Cambridge, MA 02139, USA.
+#
+#
+#
+#
+#
+# ----------------------------------------------------------------------------
+#
+# Synopsis: receive file and called msn from external application,
+# look up msn to recipient mapping in configfile
+# convert fax/voice to users requested format
+# mail fax to user
+ 
+use Unix::Syslog qw(:macros);
+use Unix::Syslog qw(:subs);
+use File::Basename;
+ 
+########CONFIGURATION##########
+ 
+#1 turn extensive logging to syslog on
+$DEBUG = 1;
+ 
+#POSTFIX relies on POSTIFYCONFIG, POSTFIXVIRTUAL, POSTFIXNAME option
+$CONFIGTYPE = "POSTFIX";
+ 
+#location of postfix main.cf file, reying on MYDOMAIN being set
+$POSTFIXCONFIG = "/etc/postfix/main.cf";
+ 
+#Postfix virtual domain Table location
+$POSTFIXVIRTUAL = "/etc/postfix/virtual";
+ 
+# name of the postfix viortual domain
+$POSTFIXNAME = "fax";
+ 
+#mail adress of the faxadmin (for info on filed faxes and undeliverable faxes
+$FAXADMIN = "faxadmin\@localhost";
+
+#location of capircvd spooldir
+$CAPIRCVDSPOOL="/var/spool/capircvd";
+ 
+ 
+#paths to various binaries required by this script, the paths
+#presented here should be valid for RedHat based Systems
+$LPR = "/usr/bin/lpr";
+$RM = "/bin/rm"; 
+$TIFF2PS = "/usr/bin/tiff2ps";
+$SENDMAIL = "/usr/sbin/sendmail";
+$BOUNDARY = "attachment";
+$MMENCODE = "/usr/bin/mmencode";
+$PPMTOGIF = "/usr/bin/ppmtogif";
+$PNMSCALE = "/usr/bin/pnmscale";
+$TIFFTOPNM = "/usr/bin/tifftopnm";
+$TIFFCP = "/usr/bin/tiffcp";
+
+#$ZIP	= "/usr/bin/zip";
+$PS2PDF	= "/usr/bin/ps2pdf";
+$PNMTOTIFF = "/usr/bin/pnmtotiff"; 
+$ISDN2WAV = "/usr/bin/isdn2wav" ;
+$SFF2MISC = "/usr/bin/sff2misc" ;
+ 
+$HOSTNAME = `hostname -f`;
+chomp $HOSTNAME;                          
+
+
+$REMOVEFILES=0;
+$EMULATEOLDHANDLER=0;
+
+#here starts the main part of the program
+#no changes should be necessary beyond this point
+#if you find it necessary to make changes beyond this point
+#PLEASE inform the authors about the changes and your reasons for them
+#so they can merge improvments/fixes into later versions
+##############################MAIN############################################
+ 
+ 
+# voice 492932916300 142 /var/spool/capircvd/from-142-to-492932916300-000002_2000-10-31_11-26-31.alaw wuebben@id-pro.de
+# fax 492932916301 129 /var/spool/capircvd/from-129-to-492932916301-000001_2000-10-31_11-25-14.sff wuebben@id-pro.de
+ 
+#
+# 1st arg is call type voice/fax
+$TYPE = "";
+# 2nd arg is recipient
+$DESTINATION = "";
+# 3rd arg is sender
+$SENDER = "";
+# 4th arg is received file
+$FILE[0] = "";
+# 5th arg is recipient. // Can be overriden by fax-recipient.conf
+$RECIPIENT = "";
+# 6th arg is sender identification
+$SENDER_ID = "";
+# 7th arg is STYLE.
+$STYLE = ""; 
+fmi_log("Starting to process fax...",LOG_INFO);
+ 
+if(!fmi_check_args()) {
+	fmi_log("The arguments are screwed. Cleaning up and aborting...",LOG_INFO);
+        fmi_cleanup();
+}
+ 
+#tmp variable.
+if( ! $EMULATEOLDHANDLER) {
+  #clear recipient and style from capircvd.conf
+  $RECIPIENT="";
+  $STYLE="";
+  $FORMAT=""; #this is only to be complete...shouldnt be set anyway.
+  ($RECIPIENT,$STYLE,$FORMAT) = fmi_find_address_and_style($DESTINATION);
+}
+else {
+ if ( $STYLE =~ /attached_pdf_zip/ ) {
+    $STYLE = "pdf";
+    $STYLE = "single";
+ }
+ elsif( $STYLE =~ /inline_jpeg/) {
+   $STYLE="jpg";  
+   $FORMAT="single";
+ }
+ else {
+   fmi_log("main(): Mailformat >$STYLE< is unknown. Using jpg.",LOG_INFO);
+   $STYLE ="jpg";
+   $FORMAT = "single";	
+ }
+}
+ 
+if ($RECIPIENT =~ /^$/) {
+ 
+  fmi_log("main(): no recipient given. Cleaning up and aborting...",LOG_INFO);
+  fmi_cleanup(0);
+}
+                                    
+ 
+
+#Stat file if possible
+$mysize = fmi_stat_file($FILE[0]);
+ 
+#Some log information. is usually helpful.
+fmi_log("Type: $TYPE",LOG_INFO);
+fmi_log("Destination: $DESTINATION",LOG_INFO);
+fmi_log("Sender: $SENDER",LOG_INFO);
+fmi_log("File: $FILE[0] (Size: $mysize)",LOG_INFO);
+fmi_log("Recipient: $RECIPIENT ",LOG_INFO);
+fmi_log("Style: $STYLE", LOG_INFO);
+fmi_log("Format: $FORMAT", LOG_INFO);
+ 
+ 
+if(!fmi_convert()) {
+        fmi_cleanup(0);
+}
+ 
+if(!fmi_deliver($RECIPIENT)) {
+        fmi_cleanup(0);
+}
+ 
+ 
+#We are done
+fmi_log("Successfull delivery.",LOG_INFO);
+fmi_cleanup(0);
+ 
+#Now we are really done.
+ 
+ 
+##############################SUBROUTINES################################################
+ 
+sub fmi_convert() {
+ 
+  if( $TYPE =~ /voice/ ) {
+        return fmi_convert_voice();
+  }
+  elsif ( $TYPE =~ /fax/ ) {
+        return fmi_convert_fax();
+  }
+  else {
+        fmi_log("fmi_convert(): Unknown type: $TYPE",LOG_INFO);
+        return 0;
+        }
+ 
+  return 1;
+ 
+}                                      
+
+sub fmi_convert_voice() {
+ 
+   my $rc;
+   fmi_debug("fmi_convert_voice()");
+   my $basename = basename($FILE[0], ".alaw");
+ 
+ 
+  `$ISDN2WAV $FILE[0] $basename.wav`;
+   $rc = $?;
+  if($rc ne 0) {
+        fmi_log("$ISDN2WAV failed. It returned $rc",LOG_INFO);
+        return 0;
+  }
+  $FILE[0] = "$basename.wav";
+  return 1;
+ 
+}
+ 
+
+
+#parent funtion that decides if recipient is a printer device or an email address.
+sub fmi_deliver() {
+  
+  if($_[0] =~ /%/ ) {
+    if($TYPE =~ /voice/ ) {
+	fmi_log("We don't allow Line Printers as recipients for voice mails. Doesn't make sense.",LOG_INFO);
+	return 0;
+    }
+    else {
+	fmi_log("Delivering to printer device",LOG_INFO);
+    	return fmi_deliver_to_printer();
+    }
+ }
+  else {
+    fmi_log("Delivering to email address.(Recipient: $RECIPIENT)",LOG_INFO);
+    return fmi_deliver_to_mail_recipient();
+  }
+  
+  return(1);
+  
+}
+
+
+#checks if all the arguments are of expected form. Return true on success.
+sub fmi_check_args() {
+  
+  my $num_args = scalar(@ARGV);
+
+  for($i = 0; $i < scalar(@ARGV); $i++) {
+	fmi_log("$i: $ARGV[$i]",LOG_INFO);
+  }
+  fmi_log("@ARGV",LOG_INFO); 
+  #lets check the number of arguments.
+  #if ($num_args ne 6) {
+  #  fmi_log("fmi_check_args(): Wrong number of arguments.(given: $num_args. should: 6)",LOG_INFO);
+  #  fmi_usage();
+  #  return(0);
+  #}
+  
+  if( $ARGV[0] =~ /^$/ ) {
+    fmi_log("fmi_check_args(): No call-type given.",LOG_INFO);
+    fmi_usage();
+    return(0);
+  }
+  if( $ARGV[1] =~ /^$/ ) {
+    fmi_log("fmi_check_args(): No destination number given.",LOG_INFO);
+    fmi_usage();
+    return(0);
+  }
+  
+  if( $ARGV[2] =~ /^$/ ) {
+    fmi_log("fmi_check_args(): No sender id given.",LOG_INFO);
+    $ARGV[2] = "-unknown-";
+  }
+  
+  if( $ARGV[3] =~ /^$/ ) {
+    fmi_debug("fmi_check_args(): no filename given. ");
+  }
+  
+
+
+  
+  $TYPE = $ARGV[0];
+  $DESTINATION = $ARGV[1];
+  $SENDER = $ARGV[2];
+  $FILE[0] = $ARGV[3];
+  #as i stated above: we ignore default recipient from capircvd.conf
+  $RECIPIENT = $ARGV[4]; 
+  $SENDER_ID = $ARGV[5];
+  $STYLE = $ARGV[6];
+  
+  #Remove whitespaces if existent.
+  $TYPE =~ s/\s+//g;   
+  $DESTINATION =~ s/\s+//g;   
+  $SENDER =~ s/\s+//g;   
+  $FILE[0] =~ s/\s+//g;   
+  #$RECIPIENT =~ s/\s+//g;   
+  
+  
+  return(1);
+  
+}
+
+#prints help onto stderr
+sub fmi_usage() {
+  
+  print STDERR "\nThe Fax Mail Integration next generation.\n"; 
+  print STDERR "(c) 2000 Markus Wuebben <wuebben\@id-pro.de>\n"; 
+  print STDERR "(c) 2000 Arne Hueggenberg <hueggenberg\@id-pro.de>\n";
+  print STDERR "(c) 2000 ID-PRO AG <info\@id-pro.de>\n";
+  print STDERR "This software is published under the gnu public license.\n\n";
+  print STDERR "\nFor information on how to use this software see the\n";
+  print STDERR "accompanying Documentation.\n";
+  
+}
+
+#prints debug messages if DEBUG is set.
+sub fmi_debug(@) {
+  
+  if($DEBUG) {
+    fmi_log(@_,LOG_INFO);		
+  }
+  
+}
+
+
+#delivers fax to a printer
+sub fmi_deliver_to_printer() {
+  
+  my $rc; 
+  
+  $RECIPIENT =~ s/%/\@/g;
+  
+  $rc = 0xffff & system "$TIFF2PS -a -1 $FILE[0] > $FILE[0].ps";
+  
+  if($rc != 0) {
+    fmi_log("Failed call: \"$TIFF2PS -2 $FILE[0] > $FILE[0].ps\".",LOG_INFO);
+    return 0;
+  }
+  
+  fmi_log("Printing using: \"$LPR -P $RECIPIENT $FILE[0].ps\"",LOG_INFO);
+  
+  $rc = 0xffff & system "$LPR -P $RECIPIENT $FILE[0].ps" ;
+  
+  if($rc != 0) {
+    fmi_log("Failed call: \"$LPR -P $RECIPIENT $FILE[0].ps\".",LOG_INFO);
+    return 0; 
+  }
+  
+  return 1;
+}
+
+#delivers fax to an email adress
+sub fmi_deliver_to_mail_recipient() {
+  my @encoded_pages;
+  my $mylength = "";
+  my $page;
+  my $MIMEGROUP;
+ 
+  fmi_log("fmi_deliver_to_mail_recipient(): filearray: @FILE",LOG_INFO); 
+  foreach $page (@FILE){ 
+    if ( -e $page ) {
+      fmi_debug("fmi_deliver_to_mail_recipient(): encoding File $page");
+      open ENCODER , "$MMENCODE -b $page |" or 
+	fmi_log("fmi_deliver_to_mail_recipient(): Can't open $MMENCODE.($!.)",LOG_INFO), return(0);
+      while(<ENCODER>) {
+	$encoded_page .= $_;
+      }
+      close ENCODER or 
+	fmi_log("Can't close $MMENCODE.($!.)",LOG_INFO) , return (0);
+      $mylength = length ($encoded_page);
+      push @encoded_pages, $encoded_page;
+      fmi_log("fmi_deliver_to_mail_recipient(): added $page (encoded size: $mylength) to array of encoded pages",LOG_INFO);
+    }
+    else  {
+      fmi_log("fmi_deliver_to_mail_recipient():the file $page wich is to be encoded does not exists!",LOG_INFO);
+    }
+  }
+
+  open MAILER , "|$SENDMAIL $RECIPIENT" or 
+    fmi_log("fmi_deliver_to_mail_recipient(): Can't open $SENDMAIL.($!.)",LOG_INFO), return(0);
+  print MAILER "Mime-Version: 1.0\n";
+  print MAILER "Content-Type: multipart/mixed; boundary=$BOUNDARY\n";
+  print MAILER "Reply-To: $FAXADMIN\n";
+  print MAILER "From: $FAXADMIN\n";
+  if( $TYPE =~ /voice/ ) {
+  	print MAILER "Subject: VoiceMail von $SENDER an $DESTINATION\n";
+  }
+  else {
+  	print MAILER "Subject: FAX von $SENDER an $DESTINATION\n";
+  }
+  print MAILER "To: $RECIPIENT\n";
+  print MAILER "\n";
+  print MAILER "--$BOUNDARY\n";
+  print MAILER "Content-Type: text/plain; charset=us-ascii\n";
+  print MAILER "Content-Transfer-Encoding: 7bit\n\n";
+  if( $TYPE =~ /voice/ ) {  
+    print MAILER "You received a voice call.\n\n";
+  }
+  else {
+    print MAILER "You received a fascimile.\n\n";
+  }
+  print MAILER "From: $SENDER\n";
+  print MAILER "To:   $DESTINATION\n";
+  print MAILER "Requested style/format: $STYLE-$FORMAT\n";
+  print MAILER "\n";
+  print MAILER "--$BOUNDARY\n";
+  $index = scalar @FILE;
+  for ($i=0; $i < $index; $i++) {
+    #using foreach would be more natural, but then i cant get the filename
+    # foreach $faxpage (@encoded_pages) {   
+      if($TYPE =~ /voice/ ) {
+      	print MAILER "Content-Type: audio/$STYLE; name=$FILE[$i]\n";
+      	print MAILER "Content-Description: Voice Mail\n";
+      }
+      else {
+        if($STYLE =~ /postscript|pdf/) {
+		$MIMEGROUP="application";
+	}
+	else {
+		$MIMEGROUP="image";
+	}
+	
+      	print MAILER "Content-Type: $MIMEGROUP/$STYLE; name=$FILE[$i]\n";
+      	print MAILER "Content-Description: FAX document\n";
+      }
+      print MAILER "Content-Transfer-Encoding: base64\n\n";
+      print MAILER "$encoded_pages[$i]\n\n";
+      print MAILER "--$BOUNDARY\n"; 
+      fmi_log("fmi_deliver_to_mail_recipient():appended $FILE[$i] to mail",LOG_INFO);
+  }
+  close MAILER or 
+	fmi_log("fmi_deliver_to_mail_recipient(): Can't close $SENDMAIL.($!.)",LOG_INFO), return(0);
+  fmi_log("fmi_deliver_to_mail_recipient(): Delivered mail....",LOG_INFO);
+    
+  return 1;
+}
+
+#logs output using the syslog facility.
+sub fmi_log($$) {
+  
+  my $logmsg = $_[0];
+  my $priority = $_[1];
+  openlog "hylafax_FMI", LOG_PID , LOG_LOCAL0;
+  syslog $priority , "%s" , $logmsg;
+  closelog;            
+  
+}
+#Cleans up.
+sub fmi_cleanup {
+  
+  my @basename;
+  if($REMOVEFILES) {
+  	if ( $FILE[0] !~ /^$/) {
+		@basename = split /\./ , $FILE[0];
+		if($basename[0] !~ /^$/) {
+	   	fmi_log("fmi_cleanup(): Removing files with base: $basename[0]",LOG_INFO);
+	  	`$RM -f $CAPIRCVDSPOOL/$basename[0]*`;
+		}
+		else {
+	   	fmi_log("fmi_cleanup(): Can't remove received files. I can't determine the basename.",LOG_INFO);
+		}
+  	}
+  }
+  exit($_[0]);
+}
+
+
+
+sub fmi_find_address_and_style() {
+  
+  my ($address,$style,$format);
+  my $msn = $_[0];
+  
+  
+  if($msn =~ /^$/ ) {
+    fmi_log("No MSN given to find address and style for.",LOG_INFO);
+    return("","","");
+  }
+  
+  if ( $CONFIGTYPE eq "POSTFIX" ) {
+    fmi_debug("find_address(): Using postfix config style.");
+    ($address, $style, $format) = fmi_find_adress_and_style_postfix($msn);
+  }
+  if($address =~ /^$/) {
+    fmi_debug"fmi_find_address_and_style(): Cant find addresss for $msn, using faxadmin [$FAXADMIN]";
+      $address=$FAXADMIN;
+  }
+  
+  if ($style eq "") {
+    fmi_debug("fmi_find_address_and_style(): Cant find find style for $msn. Using default! [tiff]");
+    $style = "tiff";
+  }
+  
+  if ($format eq "") {
+    fmi_debug("fmi_find_adress_and_style(): cant find format for $msn. Using default! [single]");
+    $format = "single";
+  }                    
+  
+  return($address,$style,$format);
+}
+
+
+
+#find masn -> email mapping from postfix subsystem
+sub fmi_find_adress_and_style_postfix {
+  my $msn = $_[0];
+  my $domain = "";
+  my @entrylist;
+  my $recipient= "" ;
+  
+  #get domain name from postfix
+  open POSTFIXCONFIG , "$POSTFIXCONFIG" or fmi_log("Can't open $POSTFIXCONFIG. Reason: $!",LOG_INFO), fmi_cleanup(1);
+  
+  while (<POSTFIXCONFIG>) {
+    #ignore comments 
+    chomp;
+    if ($_ =~ /^\s*#/) {
+	next;
+      }
+    
+    #get domainname from postfix mydomain parameter
+    if ($_ =~ /mydomain/ ) {
+      @foo = split /=/;
+      $domain = $foo[1];
+      fmi_debug("fmi_find_adress_and_style_postfix: domain found, domain is $domain");
+    }
+  }
+  close POSTFIXCONFIG;
+  #get rid of whitespaces
+  $domain =~ s/\s+//g;
+  #build name of virtual faxdomain
+  $domain = "$POSTFIXNAME" . "." . "$domain";
+  fmi_debug("faxdomain is $domain");
+  
+  open VIRTUAL, "$POSTFIXVIRTUAL" or fmi_log("Can't open $POSTFIXVIRTUAL. Reason: $!",LOG_INFO), fmi_cleanup(1);;
+  while (<VIRTUAL>) {
+    chomp;
+    #ignore comments 
+    next if ( $_ =~ /^\s*#/) ;
+
+    #ignore empty lines
+    next if ( $_ =~ /^\s*$/) ; 
+    #is in faxdomain
+    if ($_ =~ /$domain/) {
+      #is email
+      if ( $_ =~ /@/ ) {
+	push @entrylist , $_ ;  
+    }
+    }
+  }
+close POSTFIXVIRTUAL; 
+
+  foreach $entry (@entrylist) {
+    #get rid of leading WS
+    #fmi_debug("entry: $entry");
+    #fmi_debug("MSN: $msn");
+    if ( $entry =~ /$msn/ ) {
+      fmi_debug("fmi_find_adress_and_style_postfix(): entry/msn match");
+      @foo = split /\s/, $entry;
+      @bar = split /-/, $foo[0];
+      $recipient = $foo[1];
+      $style = $bar[1];
+      $format = (split /@/, $bar[2])[0];
+      fmi_debug("fmi_postifix: style: $style \n format: $format \n recipient: $recipient");
+    }
+  }
+  if ($recipient =~ /^$/) {
+     $recipient = "faxmaster";
+     $format = "single";
+    if($TYPE =~ /voice/ ) {
+	$style = "wav";
+    }
+    else {
+	$style = "tiff";
+    }
+  }
+  return ($recipient, $style, $format);
+}
+
+#conversion master routine
+#converts multipage tiff into single pages if FORMAT=many
+#converts given file into given style (gif,g3)
+sub fmi_convert_fax {
+  my $rc;
+  
+  #change path to dir where we received the fax, 
+  #so we can be assured we are allowed to write there
+  #no, i dont want to use /tmp
+  $path=dirname $FILE[0];
+  chdir $path;
+  #determine number of pages
+   
+  if( scalar(@FILE) eq 0) {
+	fmi_log("fmi_convert_fax(): No pages received. We are aborting...",LOG_INFO);
+	return 0;
+  }
+  
+  
+  if ( $STYLE =~ /tiff|tif|gif/i ) {
+
+     fmi_debug("fmi_convert_fax(): requested style: $STYLE");
+     if(! fmi_sff_to_pbm()) {
+		fmi_log("fmi_convert_fax(): fmi_sff_to_pbm() failed.",LOG_INFO);
+		return 0;
+     }
+
+     if(! fmi_pbm_to_tiff()) {
+		fmi_log("fmi_convert_fax(): fmi_pbm_to_tiff() failed.",LOG_INFO);
+		return 0;
+     }
+    if ( $STYLE =~ /tif|tiff/i ) {
+    
+      if ( $FORMAT =~ /single/i ) {
+         fmi_debug("fmi_convert_fax(): requested format: $FORMAT");
+         $rc = fmi_tiff_cp();
+         if ( ! $rc ) {
+ 	    fmi_log("fmi_convert_fax(): tiffcp failed.It returned $rc.",LOG_INFO);
+	    return 0;
+         }
+      }
+      # we dont have to do anything for multipage tifs.
+    }
+   #style is not tiff->must be gif
+    else { 
+      if ($FORMAT =~ /single/i ) {
+        fmi_log("fmi_convert_fax(): cant create single format gif.", LOG_INFO);
+        return 0;
+      }
+    
+      if ($FORMAT =~ /many/i) {
+        fmi_debug("fmi_convert_fax: requested format: $FORMAT");
+        return fmi_convert_tiff_to_gif();
+      }
+    }
+
+    #return ok if we didnt return before this point.
+    return 1;
+  }
+  
+
+  if ($STYLE =~ /jpeg|jpg/i ) {
+	fmi_debug("fmi_convert_fax(): STYLE is $STYLE");
+	return fmi_sff_to_jpeg();
+  }
+
+  if ($STYLE =~ /postscript|pdf/i ) {
+	fmi_debug("fmi_convert_fax(): STYLE is $STYLE");
+	if( ! fmi_sff_to_ps()) {
+		return 0;
+	}
+	if( $STYLE =~ /pdf/i ) {
+		return fmi_ps_to_pdf();	
+	}
+	return 1;
+  }
+
+}
+
+sub fmi_read_in_files {
+
+  my ($directory, $regex,$index);
+  $directory = $_[0];
+  $regex = $_[1];
+  $index = 0;
+
+  opendir FILEDIR , "$directory" or 
+	fmi_log("fmi_read_in_files(): Can't open dir: $directory Reason: $!.",LOG_INFO),  return 0;  
+  @direntries = readdir(FILEDIR) or 
+	fmi_log("fmi_read_in_files(): Can't readdir: $CAPIRCVDSPOOL. Realson: $!.",LOG_INFO), return 0; 
+  foreach $datei (@direntries) {
+	if ( $datei =~ /$regex/) {
+		$FILE[$index] = "$path/$datei";
+		fmi_log("fmi_read_in_files(): $FILE[$index] (idx[$index])",LOG_INFO);
+		++$index;
+	}
+  }
+  closedir FILEDIR;
+  return 1;
+}
+
+sub fmi_sff_to_jpeg() {
+
+  my ($basename,$rc,$path);
+  fmi_debug("fmi_sff_to_jpeg()");  
+  $path =  dirname($FILE[0]);
+  chdir $path or fmi_log("Can't chdir to $path. Reason: $!.",LOG_INFO),return 0;
+  $basename = basename($FILE[0],".sff");
+  fmi_log("sff_to_jpeg(): Basename set to <$basename>",LOG_INFO); 
+
+  #We convert the sff file to n-jpg's here.
+  fmi_log("sff_to_jpeg(): Converting sff-file $FILE[0] to n-jpg's.",LOG_INFO);
+  `$SFF2MISC -j $FILE[0] $basename`;
+  $rc = $?;
+  if ( $rc ne 0 ) {
+	fmi_log("$SFF2MISC failed. It returned $rc.",LOG_INFO); 
+	return 0;
+  }
+  if( ! fmi_read_in_files("$CAPIRCVDSPOOL","$basename\.[0-9]+\.jpg" ))  {
+	return 0; 
+  }
+
+  return 1;
+}
+
+sub fmi_sff_to_pbm() {
+
+  my ($basename,$rc,$path);
+  fmi_debug("fmi_sff_to_pbm()");  
+  $path =  dirname($FILE[0]);
+  chdir $path or fmi_log("Can't chdir to $path. Reason: $!.",LOG_INFO),return 0;
+  $basename = basename($FILE[0],".sff");
+  fmi_log("fmi_sff_to_pbm(): Basename set to <$basename>",LOG_INFO); 
+
+  #We convert the sff file to n-pbm's here.
+  fmi_log("fmi_sff_to_pbm(): Converting sff-file $FILE[0] to n-pbm's.",LOG_INFO);
+  `$SFF2MISC -m $FILE[0] $basename`;
+  $rc = $?;
+  if ( $rc ne 0 ) {
+	fmi_log("$SFF2MISC failed. It returned $rc.",LOG_INFO); 
+	return 0;
+  }
+  if( !fmi_read_in_files($CAPIRCVDSPOOL,"$basename\.[0-9]+\.pbm" ))  {
+	return 0; 
+  }
+
+  return 1;
+
+}
+
+
+sub fmi_sff_to_ps() {
+
+
+  my ($basename,$rc,$path);
+  fmi_debug("fmi_sff_to_ps()");
+  $path =  dirname($FILE[0]);
+  chdir $path or fmi_log("Can't chdir to $path. Reason: $!.",LOG_INFO),return 0;
+  $basename = basename($FILE[0],".sff");
+  fmi_log("fmi_sff_to_ps(): Basename set to <$basename>",LOG_INFO);
+ 
+  #We convert the sff file to ps-file here.
+  fmi_log("fmi_sff_to_ps(): Converting sff-file $FILE[0] to ps-file.",LOG_INFO);
+  `$SFF2MISC -p $FILE[0] $basename`;
+  $rc = $?;
+  if ( $rc ne 0 ) {
+        fmi_log("$SFF2MISC failed. It returned $rc.",LOG_INFO);
+        return 0;
+  }
+  if( !fmi_read_in_files($CAPIRCVDSPOOL,"$basename\.ps" ))  {
+        return 0;
+  }
+ 
+  return 1;             
+
+
+}
+
+sub fmi_ps_to_pdf() {
+
+  my ($basename,$rc,$path);
+  fmi_debug("fmi_ps_to_pdf()");
+  $path =  dirname($FILE[0]);
+  chdir $path or fmi_log("Can't chdir to $path. Reason: $!.",LOG_INFO),return 0;
+  $basename = basename($FILE[0],".ps");
+  fmi_log("fmi_ps_to_pdf(): Basename set to <$basename>",LOG_INFO);
+
+  #We convert the ps file to a pdf-file here.
+  fmi_log("fmi_ps_to_pdf(): Converting ps-file $FILE[0] to pdf-file.",LOG_INFO);  `$PS2PDF $FILE[0] $basename.pdf`;
+  $rc = $?;
+  if ( $rc ne 0 ) {
+        fmi_log("$PS2PDF failed. It returned $rc.",LOG_INFO);
+        return 0;
+  }
+  if( !fmi_read_in_files($CAPIRCVDSPOOL,"$basename\.pdf" ))  {
+        return 0;
+  }
+
+  return 1;
+
+
+}
+
+
+sub fmi_pbm_to_tiff() {
+
+  my ($index,$midindex,$basename);
+  $midindex = "001";
+
+  #Now we convert the n pbm's to tiffs.
+  fmi_log("fmi_pbm_to_tiff(): Converting pbm's to tifs.",LOG_INFO);
+
+  $basename = basename($FILE[0],".pbm");
+  $basename = basename($basename,".001");
+   
+  fmi_log("fmi_pbm_to_tiff(): basename set to <$basename>",LOG_INFO);
+  for ($index = 0; $index < scalar(@FILE); ++$index) {
+
+    `$PNMTOTIFF $FILE[$index] > $basename.$midindex.tif`; 
+    $rc = $?;
+    if( $rc ne 0) {
+      fmi_log("fmi_pbm_to_tiff(): $PNMTOTIFF failed.It returned $rc.", LOG_INFO);
+      return 0;
+    }
+
+    $FILE[$index] = "$path/$basename.$midindex.tif";
+    $size = fmi_stat_file($FILE[$index]);
+    fmi_debug("fmi_convert_fax(): $FILE[$index] ($size) (idx[$index])");
+    ++$midindex; 
+  }
+  return 1;
+}
+
+
+sub fmi_tiff_cp {
+
+   my ($path,$basename,$c);
+   #We assume we have at least one file. 
+   $basename = $FILE[0];
+   $path = dirname $basename;
+   $basename = basename($basename,".001.tif");
+   fmi_log("fmi_tiff_cp(): basename set to <$basename>",LOG_INFO);
+   fmi_log("fmi_tiff_cp(): Concatenating @FILE to $basename.tif",LOG_INFO);
+   `$TIFFCP @FILE $basename.tif`;
+   $rc = $?;
+   if( $rc ne 0) {
+	fmi_log("fmi_tiff_cp(): tiffcp failed. It returned $rc",LOG_INFO);
+	return 0;
+  }
+   undef @FILE;
+   $FILE[0] = "$basename.tif";
+   fmi_log("fmi_tiff_cp(): $FILE[0] is now a n-page tif file.",LOG_INFO);
+   return 1;
+ 
+}
+
+sub fmi_convert_tiff_to_gif {
+  
+    if ( ! fmi_tiff_to_pnm()) {
+      fmi_log("fmi_convert_tiff_to_gif(): Conversion of tiff to pnm failed.",LOG_INFO);
+      return 0;
+    }
+    
+    if ( ! fmi_scale_pnm() ) {
+      fmi_log("fmi_convert_tiff_to_gif(): Scaling of pnm failed.",LOG_INFO);
+      return 0;
+    }
+
+    if ( ! fmi_pgm_to_gif()) {
+      fmi_log("fmi_convert_tiff_to_gif(): converting pgm to gif failed.",LOG_INFO);
+      return 0;
+    }
+  return 1;
+}
+  
+#convert all tiffs in @FILE to pbms
+sub fmi_tiff_to_pnm {
+  my (@temp,$name,$tiff);
+
+  foreach $tiff ( @FILE ) {
+    fmi_debug("fmi_tiff_to_pnm(): Filename is $tiff");
+    $pbm = (basename($tiff, ".tif") . ".pbm");
+    fmi_debug("fmi_tiff_to_pnm(): adjusted filename is $pbm");
+    
+    # we redirect stdout of tifftopnm to file, then put stderr to stdout 
+    # so we can read it from the pipe
+    open (CONVERTER, "$TIFFTOPNM $tiff 2>&1 1>$pbm |") or fmi_log("fmi_tiff_to_pnm(): couldnt open $TIFFTOPNM",LOG_INFO);
+    
+    while (<CONVERTER>) {
+      if ( $_ =~ /error/i) {
+	&fmi_log("fmi_tiff_to_pnm(): couldnt convert $tiff to $pbm",LOG_INFO);
+	fmi_debug("REASON: $_");
+	fmi_debug("fmi_tiff_to_pnm: conversion FAILED!");
+	return 0;
+      }
+    }
+    push (@temp, $pbm)
+  }
+  @FILE = @temp;
+  return 1;
+}
+
+
+#scale the pnms, makes them look nicer when viewed by user
+sub fmi_scale_pnm {
+  my $pgm;
+  my @temp;
+
+  foreach $pnm (@FILE) {
+    fmi_debug("fmi_scale_pnm(): Filename is $pnm");
+    $pgm = (basename($pnm, ".pbm") . ".pgm");
+    fmi_debug("fmi_scale_pnm(): adjusted filename is $pgm");
+    
+    if ( $INFO =~ /Quality: Fine/g ) {
+      `$PNMSCALE -xscale 0.58 -yscale 0.58 $pnm > $pgm`;
+    }
+    elsif ( $INFO =~ /Quality: Normal/) {
+      `$PNMSCALE -xscale 0.58 -yscale 1.16 $pnm > $pgm`;
+    }
+    else {
+      fmi_log("fmi_scale_pnm(): couldnt determine resolution, scaling failed...using fine.",LOG_INFO);
+      `$PNMSCALE -xscale 0.58 -yscale 0.58 $pnm > $pgm`;
+    }
+    
+    if ($? ne 0) {
+      fmi_log("fmi_scale_pnm(): couldnt scale $pnm, Reason: $!, scaling failed!",LOG_INFO);
+      return 0;
+    }
+    push  (@temp, $pgm);
+  }
+  @FILE = @temp;
+  return 1;
+}
+
+
+#convert elements of @FILE from pgm to gif
+sub fmi_pgm_to_gif {
+  my $gif;
+  my @temp;
+
+  foreach $pgm (@FILE) {
+    fmi_debug("fmi_pgm_to_gif(): Filename is $pgm");
+    $gif = (basename($pgm, ".pgm") . ".gif");
+    fmi_debug("fmi_pgm_to_gif():Adjusted Filename is $gif");
+    
+    `$PPMTOGIF $pgm > $gif`;
+    
+    if ($? ne 0) {
+      fmi_log("fmi_pgm_to_gif(): couldnt convert $pgm to gif, conversion failed!",LOG_INFO);
+      return 0;
+    }
+    push (@temp, $gif);
+  }
+  @FILE = @temp;
+  return 1;
+}
+
+
+sub fmi_stat_file() {
+
+  #Stat file if possible
+  if( -e $_[0] ) {
+    @mystat = stat $FILE[0] or fmi_log("Can't stat \"$FILE\". ($!.)",LOG_INFO), fmi_cleanup(0);
+    $mysize = $mystat[7];
+  }
+  else {
+    $mysize = "Unknown";
+  }	
+  return $mysize;
+}

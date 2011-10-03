@@ -1,0 +1,13 @@
+
+al2alaw ist ein Programmm zum Konvertieren von echten aLaw-Daten
+	(erzeugt mit sox o.ä.) in ISDN-aLaw(bit reversed)!
+	Doku im Quelltext, Written by Matthias Kluth 
+
+capircvd.handler_MP3
+	Erzeugt MP3s aus Voice-Daten. Externer MP3-Encoder erforderlich!
+	z.Z. ist BladeEnc (http://www2.arnes.si/~mmilut/) eingestellt.
+	Ausserdem wird SoX verwendet.
+
+capircvd.handler_eiboeck
+        von Holger Eiboeck erweiterter Handler, kann MP3 und GIF!
+

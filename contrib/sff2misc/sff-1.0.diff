@@ -1,0 +1,68 @@
+diff -bwrc sff-1.0.org/sfffunc.c sff-1.0/sfffunc.c
+*** sff-1.0.org/sfffunc.c	Sun Oct 11 22:22:07 1998
+--- sff-1.0/sfffunc.c	Thu Apr  8 22:25:57 1999
+***************
+*** 347,352 ****
+--- 347,353 ----
+  	fprintf(f, "%%%%BoundingBox: 0 0 595 842\n");
+  	fprintf(f, "%%%%DocumentPaperSizes: A4\n");
+  	fprintf(f, "%%%%EndComments\n");
++ 	fprintf(f, "%%%%EndProlog\n");
+  }
+  
+  static void write_ps_pag_header(FILE *f, int page, int height) {
+***************
+*** 354,362 ****
+  	fprintf(f, "5 dict begin\n");
+  	fprintf(f, "0.10 832.0 translate\n");
+  	fprintf(f, "585.0 -822.0 scale\n");
+! 	fprintf(f, "/scanline 217 string def\n");
+  	fprintf(f, "1728 %d 1\n", height);
+! 	fprintf(f, "[ 1728 0 0 2106 0 0 ]\n");
+  	fprintf(f, "{ currentfile scanline readhexstring pop }\n");
+  	fprintf(f, "image\n");
+  }
+--- 355,363 ----
+  	fprintf(f, "5 dict begin\n");
+  	fprintf(f, "0.10 832.0 translate\n");
+  	fprintf(f, "585.0 -822.0 scale\n");
+! 	fprintf(f, "/scanline 216 string def\n");
+  	fprintf(f, "1728 %d 1\n", height);
+! 	fprintf(f, "[ 1728 0 0 %d 0 0 ]\n", height);
+  	fprintf(f, "{ currentfile scanline readhexstring pop }\n");
+  	fprintf(f, "image\n");
+  }
+***************
+*** 425,430 ****
+--- 426,434 ----
+  					exit(errno);
+  				}
+  				fprintf(out, "P4\n");
++ 				if (ff->paghdr.vres == 0)
++ 				   fprintf(out, "1728 %d\n", height * 2);
++                                 else
+  				   fprintf(out, "1728 %d\n", height);
+  				break;
+  			case 1:
+***************
+*** 466,471 ****
+--- 470,477 ----
+  						case 0:
+  							/* PBM */
+  							fwrite(outbuf, 216, 1, out);
++ 				                        if (ff->paghdr.vres == 0)
++ 							   fwrite(outbuf, 216, 1, out);
+  							break;
+  						case 1:
+  							/* JPEG */
+***************
+*** 495,500 ****
+--- 501,508 ----
+  					switch (format) {
+  						case 0:
+  							fwrite(outbuf, 216, 1, out);
++ 				                        if (ff->paghdr.vres == 0)
++ 							   fwrite(outbuf, 216, 1, out);
+  							break;
+  						case 1:
+  							row_pointer[0] = outbuf;

@@ -1,0 +1,216 @@
+#!/bin/bash
+
+# capircvd.handler 1.0
+#   enhanced version for gif fax and mp3 voice email attachments
+#   (c) 2001 by Holger Eiboeck <holger@eiboeck.de>
+
+# from-%2$s-to-%1$s-%3$06d_%6$04d-%7$02d-%8$02d_%9$02d.%10$02d.%11$02d.sff
+
+# parameters
+
+FORMAT="$1"
+CALLED="$2"
+CALLING="$3"
+FILE="$4"
+AN="$5"
+REMOTE="$6"
+MAILFORMAT="$7"
+
+# 
+
+FROM="InBox <inbox@eiboeck.de>"
+
+# path to used binaries
+
+CAT="/bin/cat"
+SED="/bin/sed"
+LS="/bin/ls"
+RM="/bin/rm"
+SFFTOBMP="/usr/bin/sfftobmp"
+SFF2MISC="/usr/bin/sff2misc"
+SENDMAIL="/usr/sbin/sendmail -f inbox@eiboeck.de"
+MIMENCODE="/usr/bin/mimencode -b"
+PPMTOGIF="/usr/bin/ppmtogif"
+PNMSCALE="/usr/bin/pnmscale -xscale 0.5"
+BC="/usr/bin/bc"
+ISDN2WAV="/usr/bin/isdn2wav"
+LAME="/usr/local/bin/lame --quiet --tc $FILE --ta Anruf-$CALLING --tt Anruf-$CALLED --tg 101 --voice --preset phon+"
+MAILER="capircvd.handler (c) 2001 by Holger Eiboeck"
+PING=`/bin/ping -c1 www.t-online.de > /dev/null`
+LOGFILE="/var/log/caller.log"
+
+CALLERFILE="/etc/anruf.cfg"
+if test $CALLING ; then
+  CALLERNAME=`fgrep $CALLING $CALLERFILE | cut -d \| -f 2`
+#  if test $CALLERNAME ; then
+    CALLING="$CALLERNAME ($CALLING)"
+#  fi
+fi
+
+# useful dates
+
+DATE=`date +%d.%m.%y`
+TIME=`date +%H:%M`
+DATETIME=`date +%Y%m%d-%H%M`
+
+MIMEBOUNDARY="attachment-$DATETIME-$$"
+
+# ok los gehts
+
+echo "$DATETIME: $FORMAT von $CALLING [$REMOTE]" >> $LOGFILE
+
+case "$FORMAT" in fax)
+	case "$MAILFORMAT" in inline_gif)
+  		if test -s $FILE ; then
+			basefile=`echo $FILE | $SED -e "s/\.sff//"`
+			$SFFTOBMP -pbm $FILE $basefile.pbm
+    		($CAT <<EOF
+From: $FROM
+To: <$AN>
+Subject: Eingegangenes Fax von $CALLING $REMOTE
+X-Mailer: $MAILER
+MIME-Version: 1.0
+Content-Type: Multipart/Mixed; Boundary="$MIMEBOUNDARY"
+
+
+--$MIMEBOUNDARY
+Content-Type: text/html; charset=us-ascii
+Content-Transfer-Encoding: 7bit
+
+<html><body>
+Eingegangenes Fax von Rufnummer $CALLING (RemoteID:"$REMOTE"):
+<br><center>
+EOF
+    		nr=0
+			for i in `$LS $basefile.pbm.???` ; do
+    			nr=`echo $nr + 1 | $BC`
+				$CAT <<EOF
+
+--$MIMEBOUNDARY
+Content-Type: image/gif
+Content-Transfer-Encoding: base64
+Content-Disposition: attachment; filename="$REMOTE-$nr.gif"
+Content-Discription: $REMOTE-$nr.gif
+
+EOF
+				$CAT $i | $PNMSCALE 2>/dev/null | $PPMTOGIF 2>/dev/null | $MIMENCODE
+			done
+			echo "--$MIMEBOUNDARY--"
+		) | $SENDMAIL $AN
+    	$RM $basefile.pbm.???
+  	else
+    	($CAT <<EOF
+From: $FROM
+To: $AN
+Subject: Eingegangenes Fax von $CALLING !
+
+Eingegangener Anruf von Rufnummer $CALLING an $CALLED .
+Anrufer war kein Faxgeraet !!!
+EOF
+		) | $SENDMAIL $AN
+   	fi
+
+	;;
+
+ inline_jpeg|*)
+  	if test -s $FILE ; then
+   		basefile=`echo $FILE | $SED -e "s/\.sff//"`
+   		$SFF2MISC -j $FILE $basefile
+   		($CAT <<EOF
+From: $FROM
+To: $AN
+Subject: Eingegangenes Fax
+X-Mailer: $MAILER
+MIME-Version: 1.0
+Content-Type: multipart/related; boundary="$MIMEBOUNDARY"
+
+
+--$MIMEBOUNDARY
+Content-Type: text/html; charset=us-ascii
+Content-Transfer-Encoding: 7bit
+
+<html><body>
+Eingegangenes Fax von Rufnummer $calling (RemoteID:"$remote") an $called:<br>
+<center>
+EOF
+   			nr=0
+   			for i in `$LS $basefile.???.jpg` ; do
+    			nr=`echo $nr + 1 | $BC`
+    			echo "<hr>Seite $nr:<hr><img SRC=\"cid:part$nr.$DATETIME\" width=\"97%\"><br>"
+   			done
+   			echo "</center><br>&nbsp;</body></html>"
+   			nr=0
+   			for i in `$LS $basefile.???.jpg` ; do
+    			nr=`echo $nr + 1 | $BC`
+				$CAT <<EOF
+
+--$MIMEBOUNDARY
+Content-Type: image/jpeg
+Content-ID: <part$nr.$DATETIME>
+Content-Transfer-Encoding: base64
+Content-Disposition: inline; filename="$i"
+
+EOF
+    			$MIMENCODE $i
+   			done
+   			echo "--$MIMEBOUNDARY--"
+			) | $SENDMAIL $AN
+   			$RM $basefile.???.jpg
+  	else
+   		echo -e "From: $FROM\nTo: $AN\nSubject: Eingegangenes Fax!\n\nEingegangener Anruf von Rufnummer $CALLING an $CALLED .\nAnrufer war kein Faxgeraet !!!\n\n" | $SENDMAIL $AN
+  	fi
+
+  	;;
+
+ 	esac
+;;		 # fax
+
+voice)
+ 	if test -e $FILE ; then
+  		basefile=`echo $FILE | $SED -e "s/\.alaw//"`
+  		mp3file="$basefile.mp3"
+  		wavfile="$basefile.wav"
+  		$ISDN2WAV $FILE $wavfile
+  		$LAME $wavfile $mp3file
+  		($CAT <<EOF
+From: $FROM
+To: $AN
+Subject: Eingegangener Anruf von $CALLING
+X-Mailer: $MAILER
+MIME-Version: 1.0
+Content-Type: multipart/mixed; boundary="$MIMEBOUNDARY"
+
+This is a multi-part message in MIME format.
+
+--$MIMEBOUNDARY
+Content-Type: text/html; charset=us-ascii
+Content-Transfer-Encoding: 7bit
+
+<html>
+<center>Eingegangener Anruf von Rufnummer $CALLING auf $CALLED</center>
+</html>
+
+--$MIMEBOUNDARY
+Content-Type: audio/mpeg; name="$CALLING.mp3"
+Content-Transfer-Encoding: base64
+Content-Disposition: inline; filename="$CALLING.mp3"
+
+EOF
+   		$MIMENCODE $mp3file
+   		echo "--$MIMEBOUNDARY--"
+   		) | $SENDMAIL $AN
+  		$RM $wavfile $mp3file
+ else
+  		echo -e "From: $FROM\nTo: $AN\nSubject: Eingegangener Anruf von $CALLING!\n\nEingegangener Anruf von Rufnummer $CALLING auf $CALLED, keine Aufnahme ! ...\n\n" | $SENDMAIL $AN
+ fi
+;;		# voice 
+
+exec)
+ 	echo -e "From: $FROM\nTo: $AN\nSubject: Eingehender Anruf von $CALLING!\n\nEingehender Anruf von Rufnummer $CALLING auf $CALLED ! ...\n\n" | $SENDMAIL $AN
+ 	# echo "Call from $CALLING to $CALLED" | smbclient -M $AN
+ ;;		# exec
+
+*)
+	echo -e "From: $FROM\nTo: $AN\nSubject: unknown capircvd handler!\n\nEingehender Anruf von Rufnummer $CALLING auf $CALLED ! ...\n\n" | $SENDMAIL $AN
+esac
+
